@@ -47,6 +47,7 @@
     "jest": "^21.2.1",
     "per-env": "^1.0.2",
     "preact-cli": "^2.1.0",
+    "preact-cli-plugin-async": "^2.0.0",
     "preact-cli-plugin-typescript": "^0.2.2",
     "preact-render-spy": "^1.2.1",
     "prettier": "^1.17.0"
