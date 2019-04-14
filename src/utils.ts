@@ -75,9 +75,7 @@ export function test(rs, path) {
 
       try {
         observer.next(JSON.parse(value));
-      } catch (err) {
-        console.error(err);
-      }
+      } catch (err) {}
 
       for await (const x of createAsyncIterableFetch(rs, path)) {
         await storage.set(path, JSON.stringify(x));

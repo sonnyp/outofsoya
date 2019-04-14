@@ -1,3 +1,15 @@
+export class HTTPError extends Error {
+  response: Response;
+  status: number;
+  constructor(response: Response) {
+    super(response.statusText);
+    Object.setPrototypeOf(this, new.target.prototype);
+
+    this.response = response;
+    this.status = response.status;
+  }
+}
+
 export function getDomain(resource: URL | string): string {
   let domain;
 
@@ -29,5 +41,10 @@ export async function lookup(
       ...options.headers,
     },
   });
+
+  if (response.status !== 200) {
+    throw new HTTPError(response);
+  }
+
   return response.json();
 }

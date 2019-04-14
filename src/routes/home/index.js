@@ -5,7 +5,7 @@ import classNames from "classnames";
 import { main } from "../../glue";
 import { feedback, test } from "../../utils";
 
-const resource = "acct:sonny@5apps.com";
+const resource = "acct:outofsoya@5apps.com";
 
 const Item = ({ item, onRemove, onChange, ...props }, state) => {
   const { value, done } = item;
