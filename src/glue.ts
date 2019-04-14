@@ -7,19 +7,14 @@ import RemoteStorage, {
 export async function connect(resource: string, scope: string): Promise<void> {
   const webfinger = await lookup(resource);
   const record = getRemoteStorageRecord(webfinger);
+  localStorage.setItem("href", record.href);
   const url = buildAuthURL(record, { scope, clientId: "outofsoya" });
   window.location.href = url.toString();
 }
 
-export async function connected(
-  resource,
-  token: string,
-): Promise<RemoteStorage> {
-  const webfinger = await lookup(resource);
-  const record = getRemoteStorageRecord(webfinger);
-  const rs = new RemoteStorage(record.href, token);
-
-  return rs;
+export function connected(token: string): RemoteStorage {
+  const href = localStorage.getItem("href");
+  return new RemoteStorage(href, token);
 }
 
 export async function main(
@@ -41,12 +36,12 @@ export async function main(
   if (token) {
     localStorage.setItem("token", token);
     // Remove hash from current url
-    history.replaceState({}, "", url.pathname);
-    return connected(resource, token);
+    history.pushState({}, "", url.pathname);
+    return connected(token);
   } else {
     const token = localStorage.getItem("token");
     if (token) {
-      return connected(resource, token);
+      return connected(token);
     } else {
       return connect(
         resource,
