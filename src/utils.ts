@@ -1,6 +1,6 @@
 import RemoteStorage, { Node } from "./RemoteStorage";
 import { Observable } from "zen-observable/lib/Observable";
-import { StorageArea } from "kv-storage-polyfill";
+import storage from "./storage";
 
 function toObservable(asyncIterable: AsyncIterable<any>): Observable {
   return new Observable(observer => {
@@ -65,34 +65,29 @@ export function observe(rs: RemoteStorage, path: string): Observable {
   return toObservable(createAsyncIterableFetch(rs, path));
 }
 
-const storage = new StorageArea("outofsoya");
+// export function test(rs, path) {
+//   return new Observable(observer => {
+//     let stop = false;
+//     async function drain() {
+//       const value = await storage.get(path);
 
-export function test(rs, path) {
-  return new Observable(observer => {
-    let stop = false;
-    async function drain() {
-      const value = await storage.get(path);
+//       try {
+//         observer.next(JSON.parse(value));
+//       } catch (err) {}
 
-      try {
-        observer.next(JSON.parse(value));
-      } catch (err) {}
+//       for await (const x of createAsyncIterableFetch(rs, path)) {
+//         await storage.set(path, JSON.stringify(x));
+//         observer.next(x);
 
-      for await (const x of createAsyncIterableFetch(rs, path)) {
-        await storage.set(path, JSON.stringify(x));
-        observer.next(x);
-
-        if (stop) break;
-      }
-    }
-    drain().then(x => observer.complete(x), err => observer.error(err));
-    return _ => {
-      stop = true;
-    };
-  });
-}
-
-const metaStorage = new StorageArea("outofsoya-meta");
-const dataStorage = new StorageArea("outofsoya-data");
+//         if (stop) break;
+//       }
+//     }
+//     drain().then(x => observer.complete(x), err => observer.error(err));
+//     return _ => {
+//       stop = true;
+//     };
+//   });
+// }
 
 export class Resource {
   rs: RemoteStorage;
@@ -151,7 +146,7 @@ export class Resource {
 
     if (res.status === 200 || res.status === 201) {
       this.version = node.version;
-      await metaStorage.set(this.path, JSON.stringify(node));
+      await storage.setNode(this.path, node);
     } else if (res.status === 412) {
       const resolved = await this.onConflict2([{ type }, value], async () => {
         this.version = undefined;
@@ -176,8 +171,7 @@ export class Resource {
   async update(value: string, type: string) {
     clearTimeout(this.pollTimeout);
 
-    await metaStorage.set(this.path, JSON.stringify({ type }));
-    await dataStorage.set(this.path, value);
+    await storage.set(this.path, { type }, value);
 
     await this.put(value, type);
 
@@ -225,8 +219,7 @@ export class Resource {
     }
 
     if (this.outOfSync) {
-      const localNode = JSON.parse(await metaStorage.get(this.path));
-      const localValue = await dataStorage.get(this.path);
+      const [localNode, localValue] = await storage.get(this.path);
 
       let node;
       let res;
@@ -257,36 +250,36 @@ export class Resource {
         // first get
         if (!this.version) {
           const value = await res.text();
-          await metaStorage.set(this.path, JSON.stringify(node));
-          await dataStorage.set(this.path, value);
+          await storage.set(this.path, node, value);
           this.version = node.version;
           await this.onChange(value, node);
         } else {
-          const localNode = JSON.parse(await metaStorage.get(this.path));
+          const localNode = await storage.getNode(this.path);
           // no conflict
           if (!localNode || localNode.version) {
             const value = await res.text();
-            await metaStorage.set(this.path, JSON.stringify(node));
-            await dataStorage.set(this.path, value);
+
+            await storage.set(this.path, node, value);
+
             this.version = node.version;
             await this.onChange(value, node);
             // conflict
           } else {
-            const value = await this.onConflict(
+            const resolved = await this.onConflict(
               [
                 localNode,
                 () => {
-                  return dataStorage.get(this.path);
+                  return storage.getFile(this.path);
                 },
               ],
               [node, res],
             );
 
             this.version = node.version;
-            await this.update(value, node.type);
+            await this.update(resolved, node.type);
 
             // FIXME no need to wait for onchange to trigger update
-            await this.onChange(value, { type: node.type });
+            await this.onChange(resolved, { type: node.type });
 
             return;
             // console.log(resolved);
@@ -326,13 +319,11 @@ export class Resource {
   async subscribe() {
     this.subscribed = true;
 
-    try {
-      const localData = await dataStorage.get(this.path);
-      const localNode = JSON.parse(await metaStorage.get(this.path));
+    const [localNode, localFile] = await storage.get(this.path);
+
+    if (localNode && localFile) {
       this.version = localNode.version;
-      this.onChange(localData, localNode);
-    } catch (err) {
-      console.error(err);
+      this.onChange(localFile, localNode);
     }
 
     this.poll();
