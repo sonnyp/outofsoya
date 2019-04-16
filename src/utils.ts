@@ -90,3 +90,115 @@ export function test(rs, path) {
     };
   });
 }
+
+export class Resource {
+  rs: RemoteStorage;
+  path: string;
+  version?: string;
+  interval: number = 5000;
+  onChange: Function = () => {};
+  onConflict: Function = () => {};
+  subscribed: boolean = false;
+  private pollTimeout: any;
+
+  constructor(rs, path) {
+    this.rs = rs;
+    this.path = path;
+  }
+
+  async get(): Promise<[Node, Response]> {
+    const headers = {};
+    if (this.version) {
+      headers["If-None-Match"] = this.version;
+    }
+
+    const [node, res] = await this.rs.get(this.path, {
+      cache: "no-store",
+      headers,
+    });
+    return [node, res];
+  }
+
+  async update(value: string, type: string) {
+    clearTimeout(this.pollTimeout);
+
+    const blob = new Blob([value], {
+      type,
+    });
+
+    const [node, res] = await this.rs.put(this.path, blob, {
+      headers: {
+        "If-Match": this.version,
+      },
+    });
+
+    if (res.status === 412) {
+      const resolved = await this.onConflict(value, node);
+      if (resolved !== undefined) {
+        this.version = undefined;
+        return this.update(resolved, type);
+      }
+
+      if (this.subscribed) {
+        this.poll();
+      }
+      return;
+    }
+
+    this.version = node.version;
+
+    await storage.set(this.path, `[${value},${JSON.stringify(node)}]`);
+
+    if (this.subscribed) {
+      this.schedulePoll();
+    }
+  }
+
+  private async schedulePoll() {
+    clearTimeout(this.pollTimeout);
+
+    this.pollTimeout = setTimeout(() => {
+      this.poll();
+    }, this.interval);
+  }
+
+  private async poll() {
+    if (this.subscribed === false) {
+      return;
+    }
+
+    try {
+      const [node, res] = await this.get();
+
+      if (res.status === 200) {
+        const value = await res.text();
+        await storage.set(this.path, `[${value},${JSON.stringify(node)}]`);
+        this.version = node.version;
+        await this.onChange(value, node);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+
+    this.schedulePoll();
+  }
+
+  subscribe() {
+    this.subscribed = true;
+
+    storage.get(this.path).then(v => {
+      try {
+        const [value, node] = JSON.parse(v);
+        this.version = node.version;
+        this.onChange(JSON.stringify(value), node);
+      } catch (err) {}
+
+      this.poll();
+    });
+  }
+
+  unsubscribe() {
+    clearTimeout(this.pollTimeout);
+    this.subscribed = false;
+  }
+}

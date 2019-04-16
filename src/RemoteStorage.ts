@@ -157,18 +157,21 @@ export default class RS implements AsyncIterable<[string, Node]> {
     path: string,
     data: Blob,
     options: RequestInit = {},
-  ): Promise<Node> {
+  ): Promise<[Node, Response]> {
     const res = await this.fetch(path, {
       method: "PUT",
       body: data,
       ...options,
     });
 
-    return {
-      ...createNode(res.headers),
-      size: data.size,
-      type: data.type || null,
-    };
+    return [
+      {
+        ...createNode(res.headers),
+        size: data.size,
+        type: data.type || null,
+      },
+      res,
+    ];
   }
 }
 

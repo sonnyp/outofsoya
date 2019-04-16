@@ -20,7 +20,7 @@
   height: 46px;
   cursor: pointer;
   display: flex;
-  align-items: center;
+  user-select: none;
 }
 
 .item > div:first-child {
@@ -28,6 +28,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 44px;
 }
 
 .remove {

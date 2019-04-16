@@ -3,10 +3,10 @@ import style from "./style";
 import classNames from "classnames";
 
 import { main } from "../../glue";
-import { feedback, test } from "../../utils";
+import { feedback, Resource } from "../../utils";
 
-// const resource = "acct:outofsoya@foobar";
-const resource = "acct:outofsoya@5apps.com";
+const resource = "acct:outofsoya@foobar";
+// const resource = "acct:outofsoya@5apps.com";
 
 const Item = ({ item, onRemove, onChange, ...props }, state) => {
   const { value, done } = item;
@@ -38,22 +38,20 @@ class List extends Component {
 
     const { items } = this.state;
 
-    const blob = new Blob([JSON.stringify(items, null, 2)], {
-      type: "application/json",
-    });
-
-    const node = await this.rs.put("/outofsoya/list.json", blob, {
-      // headers: {
-      //   "If-Match": this.version,
-      // },
-    });
-    this.version = node.version;
+    this.resource
+      .update(JSON.stringify(items), "application/json")
+      .catch(console.error);
   }
 
-  handleSubmit = evt => {
+  handleSubmit = async evt => {
     evt.preventDefault();
-    const value = evt.target.elements.new.value;
-    if (!value) return;
+
+    const input = evt.target.elements.field;
+    const { value } = input;
+    if (!value) {
+      input.focus();
+      return;
+    }
 
     feedback();
 
@@ -86,28 +84,38 @@ class List extends Component {
     this.save();
   }
 
-  constructor(...params) {
-    super(...params);
-    this.version = null;
-  }
-
   async componentDidMount() {
     this.rs = await main(resource, "outofsoya:rw");
 
     if (!this.rs) return;
 
-    const updates = test(this.rs, "/outofsoya/list.json");
+    const r = (this.resource = new Resource(this.rs, "/outofsoya/list.json"));
 
-    this.subscription = updates.subscribe(([items, node]) => {
-      this.version = node.version;
+    r.onConflict = async (localValue, localNode) => {
+      const [remoteNode, res] = await r.get();
+      const remoteValue = await res.json();
+
+      console.log("conflict");
+      console.log("local", localNode, localValue);
+      console.log("remote", remoteNode, remoteValue);
+
+      const resolved = [...localValue, ...remoteValue];
+      console.log(resolved);
+
+      return resolved;
+    };
+
+    r.onChange = (value, node) => {
       this.setState({
-        items,
+        items: JSON.parse(value),
       });
-    });
+    };
+
+    r.subscribe();
   }
 
   componentWillUnmount() {
-    this.subscription.unsubscribe();
+    this.resource.unsubscribe();
   }
 
   render(props, state) {
@@ -120,7 +128,7 @@ class List extends Component {
             autofocus
             autocomplete="off"
             type="text"
-            name="new"
+            name="field"
             placeholder="soya"
           />
           <input type="submit" value="➕" class={style.addButton} />
