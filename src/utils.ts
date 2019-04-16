@@ -99,6 +99,7 @@ export class Resource {
   path: string;
   version?: string;
   interval: number = 2000;
+  outOfSync: boolean = false;
   onChange: Function = () => {};
   onConflict: Function = () => {};
   onConflict2: Function = () => {};
@@ -123,45 +124,87 @@ export class Resource {
     return [node, res];
   }
 
-  async update(value: string, type: string) {
-    clearTimeout(this.pollTimeout);
-
-    const blob = new Blob([value], {
-      type,
-    });
-
-    await metaStorage.set(this.path, JSON.stringify({ type }));
-    await dataStorage.set(this.path, value);
-
+  async put(value: string, type: string): Promise<[Node, Response]> {
     const headers = {};
     if (this.version) {
       headers["If-Match"] = this.version;
     }
 
+    let node;
+    let res;
+
+    const blob = new Blob([value], {
+      type,
+    });
+
     try {
-      const [node, res] = await this.rs.put(this.path, blob, {
+      [node, res] = await this.rs.put(this.path, blob, {
         headers,
       });
-
-      if (res.status === 412) {
-        const resolved = await this.onConflict(value, node);
-        if (resolved !== undefined) {
-          this.version = undefined;
-          return this.update(resolved, type);
-        }
-
-        if (this.subscribed) {
-          this.poll();
-        }
-        return;
-      }
-
-      await metaStorage.set(this.path, JSON.stringify(node));
-
-      this.version = node.version;
     } catch (err) {
-      console.error(err);
+      this.outOfSync = true;
+      if (this.subscribed) {
+        this.schedulePoll();
+      }
+      return;
     }
+
+    if (res.status === 200 || res.status === 201) {
+      this.version = node.version;
+      await metaStorage.set(this.path, JSON.stringify(node));
+    } else if (res.status === 412) {
+      const resolved = await this.onConflict2([{ type }, value], async () => {
+        this.version = undefined;
+        const [node, res] = await this.get();
+        this.version = node.version;
+        return [node, res];
+      });
+
+      await this.update(resolved, node.type);
+
+      this.outOfSync = false;
+
+      // FIXME no need to wait for onchange to trigger update
+      await this.onChange(value, { type: node.type });
+
+      return;
+    }
+
+    return [node, res];
+  }
+
+  async update(value: string, type: string) {
+    clearTimeout(this.pollTimeout);
+
+    await metaStorage.set(this.path, JSON.stringify({ type }));
+    await dataStorage.set(this.path, value);
+
+    await this.put(value, type);
+
+    // try {
+    //   const [node, res] = await this.rs.put(this.path, blob, {
+    //     headers,
+    //   });
+
+    //   if (res.status === 412) {
+    //     const resolved = await this.onConflict(value, node);
+    //     if (resolved !== undefined) {
+    //       this.version = undefined;
+    //       return this.update(resolved, type);
+    //     }
+
+    //     if (this.subscribed) {
+    //       this.poll();
+    //     }
+    //     return;
+    //   }
+
+    //   await metaStorage.set(this.path, JSON.stringify(node));
+
+    //   this.version = node.version;
+    // } catch (err) {
+    //   console.error(err);
+    // }
 
     if (this.subscribed) {
       this.schedulePoll();
@@ -181,7 +224,31 @@ export class Resource {
       return;
     }
 
-    console.log(this.version);
+    if (this.outOfSync) {
+      const localNode = JSON.parse(await metaStorage.get(this.path));
+      const localValue = await dataStorage.get(this.path);
+
+      let node;
+      let res;
+      try {
+        [node, res] = await this.put(localValue, localNode.type);
+      } catch (err) {
+        if (this.subscribed) {
+          this.schedulePoll();
+        }
+        return;
+      }
+      if (res.status === 200 || res.status === 201) {
+        this.outOfSync = false;
+      }
+
+      console.log("foo");
+      if (this.subscribed) {
+        console.log("bar");
+        this.schedulePoll();
+      }
+      return;
+    }
 
     try {
       const [node, res] = await this.get();
@@ -205,7 +272,7 @@ export class Resource {
             await this.onChange(value, node);
             // conflict
           } else {
-            const value = await this.onConflict2(
+            const value = await this.onConflict(
               [
                 localNode,
                 () => {

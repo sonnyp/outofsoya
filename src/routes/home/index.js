@@ -32,9 +32,11 @@ function sortByDate(a, b) {
   return new Date(b.created) - new Date(a.created);
 }
 
-async function resolveConflict([localNode, getLocal], [remoteNode, response]) {
+async function resolveConflict([localNode, local], [remoteNode, response]) {
   console.log("oh wow conflict!!!");
-  const localValue = JSON.parse(await getLocal());
+  const localValue = JSON.parse(
+    typeof local === "function" ? await local() : local,
+  );
   const remoteValue = await response.json();
 
   console.log("local", localNode, localValue);
@@ -117,21 +119,7 @@ class List extends Component {
 
     const r = (this.resource = new Resource(this.rs, "/outofsoya/list.json"));
 
-    // r.onConflict = async (localValue, localNode) => {
-    //   const [remoteNode, res] = await r.get();
-    //   const remoteValue = await res.json();
-
-    //   console.log("conflict");
-    //   console.log("local", localNode, localValue);
-    //   console.log("remote", remoteNode, remoteValue);
-
-    //   const resolved = [...localValue, ...remoteValue];
-    //   console.log(resolved);
-
-    //   return resolved;
-    // };
-
-    r.onConflict2 = resolveConflict;
+    r.onConflict = resolveConflict;
 
     r.onChange = (value, node) => {
       this.setState({
