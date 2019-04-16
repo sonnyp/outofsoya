@@ -165,7 +165,7 @@ export class Resource {
       this.outOfSync = false;
 
       // FIXME no need to wait for onchange to trigger update
-      await this.onChange(value, { type: node.type });
+      await this.onChange(resolved, { type: node.type });
 
       return;
     }

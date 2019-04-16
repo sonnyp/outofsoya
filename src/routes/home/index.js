@@ -32,11 +32,9 @@ function sortByDate(a, b) {
   return new Date(b.created) - new Date(a.created);
 }
 
-async function resolveConflict([localNode, local], [remoteNode, response]) {
+async function resolveConflict([localNode, getLocal], [remoteNode, response]) {
   console.log("oh wow conflict!!!");
-  const localValue = JSON.parse(
-    typeof local === "function" ? await local() : local,
-  );
+  const localValue = JSON.parse(await getLocal());
   const remoteValue = await response.json();
 
   console.log("local", localNode, localValue);
@@ -52,6 +50,34 @@ async function resolveConflict([localNode, local], [remoteNode, response]) {
     },
     [],
   );
+
+  return JSON.stringify(resolved.sort(sortByDate));
+}
+
+async function resolveConflict2([localNode, localValue], fetch) {
+  console.log("oh wow conflict2!!!");
+
+  localValue = JSON.parse(localValue);
+
+  const [remoteNode, res] = await fetch();
+
+  const remoteValue = await res.json();
+
+  console.log("local", localNode, localValue);
+  console.log("remote", remoteNode, remoteValue);
+
+  const resolved = [...localValue, ...remoteValue].reduce(
+    (accumulator, item) => {
+      if (!accumulator.find(_ => _.value === item.value)) {
+        accumulator.unshift(item);
+      }
+
+      return accumulator;
+    },
+    [],
+  );
+
+  console.log(resolved);
 
   return JSON.stringify(resolved.sort(sortByDate));
 }
@@ -120,6 +146,8 @@ class List extends Component {
     const r = (this.resource = new Resource(this.rs, "/outofsoya/list.json"));
 
     r.onConflict = resolveConflict;
+
+    r.onConflict2 = resolveConflict2;
 
     r.onChange = (value, node) => {
       this.setState({
