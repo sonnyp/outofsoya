@@ -185,15 +185,48 @@ export class Resource {
       const [node, res] = await this.get();
 
       if (res.status === 200) {
-        const value = await res.text();
-
         // first get
-        // if (!this.version) {
-        await metaStorage.set(this.path, JSON.stringify(node));
-        await dataStorage.set(this.path, value);
-        this.version = node.version;
-        console.log("hello");
-        await this.onChange(value, node);
+        if (!this.version) {
+          const value = await res.text();
+          await metaStorage.set(this.path, JSON.stringify(node));
+          await dataStorage.set(this.path, value);
+          this.version = node.version;
+          await this.onChange(value, node);
+        } else {
+          const localNode = JSON.parse(await metaStorage.get(this.path));
+          // no conflict
+          if (!localNode || localNode.version) {
+            const value = await res.text();
+            await metaStorage.set(this.path, JSON.stringify(node));
+            await dataStorage.set(this.path, value);
+            this.version = node.version;
+            await this.onChange(value, node);
+            // conflict
+          } else {
+            const value = await this.onConflict2(
+              [
+                localNode,
+                () => {
+                  return dataStorage.get(this.path);
+                },
+              ],
+              [node, res],
+            );
+
+            this.version = node.version;
+            await this.update(value, node.type);
+
+            // FIXME no need to wait for onchange to trigger update
+            await this.onChange(value, { type: node.type });
+
+            return;
+            // console.log(resolved);
+            // if (resolved !== undefined) {
+            //   this.version = node.version;
+            //   return this.update(resolved, node.type);
+            // }
+          }
+        }
         // } else {
         //   const localNode = JSON.parse(await metaStorage.get(this.path));
         //   const localValue = await dataStorage.get(this.path);

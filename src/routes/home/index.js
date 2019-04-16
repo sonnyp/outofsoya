@@ -105,19 +105,18 @@ class List extends Component {
     //   return resolved;
     // };
 
-    // r.onConflict2 = async (
-    //   [localValue, localNode],
-    //   [remoteValue, remoteNode],
-    // ) => {
-    //   console.log("conflict2");
-    //   console.log("local", localNode, localValue);
-    //   console.log("remote", remoteNode, remoteValue);
+    r.onConflict2 = async ([localNode, localFetch], [remoteNode, response]) => {
+      console.log("oh wow conflict!!!");
+      const localValue = JSON.parse(await localFetch());
+      const remoteValue = await response.json();
 
-    //   const resolved = [...localValue, ...remoteValue];
-    //   console.log(resolved);
+      console.log("local", localNode, localValue);
+      console.log("remote", remoteNode, remoteValue);
 
-    //   return resolved;
-    // };
+      const resolved = [...localValue, ...remoteValue];
+
+      return JSON.stringify(resolved);
+    };
 
     r.onChange = (value, node) => {
       this.setState({
