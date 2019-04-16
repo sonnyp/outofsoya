@@ -91,13 +91,17 @@ export function test(rs, path) {
   });
 }
 
+const metaStorage = new StorageArea("outofsoya-meta");
+const dataStorage = new StorageArea("outofsoya-data");
+
 export class Resource {
   rs: RemoteStorage;
   path: string;
   version?: string;
-  interval: number = 5000;
+  interval: number = 2000;
   onChange: Function = () => {};
   onConflict: Function = () => {};
+  onConflict2: Function = () => {};
   subscribed: boolean = false;
   private pollTimeout: any;
 
@@ -126,28 +130,38 @@ export class Resource {
       type,
     });
 
-    const [node, res] = await this.rs.put(this.path, blob, {
-      headers: {
-        "If-Match": this.version,
-      },
-    });
+    await metaStorage.set(this.path, JSON.stringify({ type }));
+    await dataStorage.set(this.path, value);
 
-    if (res.status === 412) {
-      const resolved = await this.onConflict(value, node);
-      if (resolved !== undefined) {
-        this.version = undefined;
-        return this.update(resolved, type);
-      }
-
-      if (this.subscribed) {
-        this.poll();
-      }
-      return;
+    const headers = {};
+    if (this.version) {
+      headers["If-Match"] = this.version;
     }
 
-    this.version = node.version;
+    try {
+      const [node, res] = await this.rs.put(this.path, blob, {
+        headers,
+      });
 
-    await storage.set(this.path, `[${value},${JSON.stringify(node)}]`);
+      if (res.status === 412) {
+        const resolved = await this.onConflict(value, node);
+        if (resolved !== undefined) {
+          this.version = undefined;
+          return this.update(resolved, type);
+        }
+
+        if (this.subscribed) {
+          this.poll();
+        }
+        return;
+      }
+
+      await metaStorage.set(this.path, JSON.stringify(node));
+
+      this.version = node.version;
+    } catch (err) {
+      console.error(err);
+    }
 
     if (this.subscribed) {
       this.schedulePoll();
@@ -172,9 +186,33 @@ export class Resource {
 
       if (res.status === 200) {
         const value = await res.text();
-        await storage.set(this.path, `[${value},${JSON.stringify(node)}]`);
+
+        // first get
+        // if (!this.version) {
+        await metaStorage.set(this.path, JSON.stringify(node));
+        await dataStorage.set(this.path, value);
         this.version = node.version;
+        console.log("hello");
         await this.onChange(value, node);
+        // } else {
+        //   const localNode = JSON.parse(await metaStorage.get(this.path));
+        //   const localValue = await dataStorage.get(this.path);
+        //   if (!localNode || !localValue) return;
+
+        //   const local = [localValue, localNode];
+        //   const remote = [value, node];
+
+        //   const resolved = await this.onConflict2(local, remote);
+        //   if (resolved !== undefined) {
+        //     this.version = node.version;
+        //     return this.update(resolved, node.type);
+        //   }
+
+        //   // if (this.subscribed) {
+        //   //   this.poll();
+        //   // }
+        //   // return;
+        // }
       }
     } catch (err) {
       console.error(err);
@@ -183,18 +221,19 @@ export class Resource {
     this.schedulePoll();
   }
 
-  subscribe() {
+  async subscribe() {
     this.subscribed = true;
 
-    storage.get(this.path).then(v => {
-      try {
-        const [value, node] = JSON.parse(v);
-        this.version = node.version;
-        this.onChange(JSON.stringify(value), node);
-      } catch (err) {}
+    try {
+      const localData = await dataStorage.get(this.path);
+      const localNode = JSON.parse(await metaStorage.get(this.path));
+      this.version = localNode.version;
+      this.onChange(localData, localNode);
+    } catch (err) {
+      console.error(err);
+    }
 
-      this.poll();
-    });
+    this.poll();
   }
 
   unsubscribe() {

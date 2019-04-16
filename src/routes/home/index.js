@@ -91,19 +91,33 @@ class List extends Component {
 
     const r = (this.resource = new Resource(this.rs, "/outofsoya/list.json"));
 
-    r.onConflict = async (localValue, localNode) => {
-      const [remoteNode, res] = await r.get();
-      const remoteValue = await res.json();
+    // r.onConflict = async (localValue, localNode) => {
+    //   const [remoteNode, res] = await r.get();
+    //   const remoteValue = await res.json();
 
-      console.log("conflict");
-      console.log("local", localNode, localValue);
-      console.log("remote", remoteNode, remoteValue);
+    //   console.log("conflict");
+    //   console.log("local", localNode, localValue);
+    //   console.log("remote", remoteNode, remoteValue);
 
-      const resolved = [...localValue, ...remoteValue];
-      console.log(resolved);
+    //   const resolved = [...localValue, ...remoteValue];
+    //   console.log(resolved);
 
-      return resolved;
-    };
+    //   return resolved;
+    // };
+
+    // r.onConflict2 = async (
+    //   [localValue, localNode],
+    //   [remoteValue, remoteNode],
+    // ) => {
+    //   console.log("conflict2");
+    //   console.log("local", localNode, localValue);
+    //   console.log("remote", remoteNode, remoteValue);
+
+    //   const resolved = [...localValue, ...remoteValue];
+    //   console.log(resolved);
+
+    //   return resolved;
+    // };
 
     r.onChange = (value, node) => {
       this.setState({
