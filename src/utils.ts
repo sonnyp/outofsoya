@@ -181,6 +181,8 @@ export class Resource {
       return;
     }
 
+    console.log(this.version);
+
     try {
       const [node, res] = await this.get();
 
