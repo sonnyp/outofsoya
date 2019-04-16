@@ -5,8 +5,13 @@ import classNames from "classnames";
 import { main } from "../../glue";
 import { feedback, Resource } from "../../utils";
 
-const resource = "acct:outofsoya@foobar";
-// const resource = "acct:outofsoya@5apps.com";
+let resource;
+
+if (window.location.hostname === "outofsoya.netlify.com") {
+  resource = "acct:outofsoya@5apps.com";
+} else {
+  resource = "acct:outofsoya@foobar";
+}
 
 const Item = ({ item, onRemove, onChange, ...props }, state) => {
   const { value, done } = item;
