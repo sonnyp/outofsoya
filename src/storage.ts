@@ -37,4 +37,8 @@ export default {
 
     return [node, file];
   },
+
+  async clear(): Promise<void> {
+    await Promise.all([nodes.clear(), files.clear()]);
+  },
 };

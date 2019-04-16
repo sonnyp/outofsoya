@@ -334,3 +334,9 @@ export class Resource {
     this.subscribed = false;
   }
 }
+
+export async function forget() {
+  await storage.clear();
+  localStorage.clear();
+  window.location.reload();
+}
