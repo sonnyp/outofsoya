@@ -29,7 +29,7 @@ export function sound(): Promise<void> {
 
 export function feedback(): void {
   vibrate();
-  sound();
+  // sound();
 }
 
 export function delay(ms: number) {

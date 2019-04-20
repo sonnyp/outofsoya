@@ -5,14 +5,6 @@ import classNames from "classnames";
 import { main } from "../../glue";
 import { feedback, Resource } from "../../utils";
 
-let resource;
-
-if (window.location.hostname === "outofsoya.netlify.com") {
-  resource = "acct:outofsoya@5apps.com";
-} else {
-  resource = "acct:outofsoya@foobar";
-}
-
 const Item = ({ item, onRemove, onChange, ...props }, state) => {
   const { value, done } = item;
 
@@ -144,6 +136,14 @@ class List extends Component {
   }
 
   async componentDidMount() {
+    let resource;
+
+    if (window.location.hostname === "outofsoya.netlify.com") {
+      resource = "acct:outofsoya@5apps.com";
+    } else {
+      resource = "acct:outofsoya@foobar";
+    }
+
     this.rs = await main(resource, "outofsoya:rw");
 
     if (!this.rs) return;
