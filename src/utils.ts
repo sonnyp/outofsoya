@@ -91,8 +91,6 @@ export class Resource {
   interval: number = 2000;
   onChange: Function = () => {};
   onConflict: Function = () => {};
-  onConflict2: Function = () => {};
-  onRemoteChanges: Function = () => {};
   subscribed: boolean = false;
   private pollTimeout: any;
 
@@ -121,7 +119,8 @@ export class Resource {
   }
 
   public async update(value: string, type: string) {
-    clearTimeout(this.pollTimeout);
+    const { pollTimeout } = this;
+    clearTimeout(pollTimeout);
 
     const localNode = await storage.getNode(this.path);
     await storage.set(this.path, { ...localNode, type, sync: false }, value);
@@ -132,13 +131,17 @@ export class Resource {
       console.error(err);
     }
 
-    if (this.subscribed) {
+    if (pollTimeout) {
       this.schedulePoll();
     }
   }
 
   private async schedulePoll() {
     clearTimeout(this.pollTimeout);
+
+    if (!this.subscribed) {
+      return;
+    }
 
     this.pollTimeout = setTimeout(() => {
       this.poll();
@@ -193,9 +196,9 @@ export class Resource {
 
       if (!localNode || localNode.sync !== false) {
         if (remoteNode) {
-          const value = await res.text();
-          await storage.set(this.path, remoteNode, value);
-          await this.onChange(value, remoteNode);
+          const remoteValue = await res.text();
+          await storage.set(this.path, remoteNode, remoteValue);
+          await this.onChange(remoteValue, remoteNode);
         }
       } else {
         if (remoteNode) {

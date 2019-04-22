@@ -51,34 +51,6 @@ async function resolveConflict([localNode, getLocal], [remoteNode, response]) {
   ];
 }
 
-// async function resolveConflict2([localNode, localValue], fetch) {
-//   console.log("oh wow conflict2!!!");
-
-//   localValue = JSON.parse(localValue);
-
-//   const [remoteNode, res] = await fetch();
-
-//   const remoteValue = await res.json();
-
-//   console.log("local", localNode, localValue);
-//   console.log("remote", remoteNode, remoteValue);
-
-//   const resolved = [...localValue, ...remoteValue].reduce(
-//     (accumulator, item) => {
-//       if (!accumulator.find(_ => _.value === item.value)) {
-//         accumulator.unshift(item);
-//       }
-
-//       return accumulator;
-//     },
-//     [],
-//   );
-
-//   console.log(resolved);
-
-//   return JSON.stringify(resolved.sort(sortByDate));
-// }
-
 class List extends Component {
   state = {
     items: [],
@@ -152,18 +124,10 @@ class List extends Component {
 
     r.onConflict = resolveConflict;
 
-    // r.onConflict2 = resolveConflict2;
-
     r.onChange = (value, node) => {
       this.setState({
         items: JSON.parse(value).sort(sortByDate),
       });
-    };
-
-    r.onRemoteChanges = ([remoteNode, res], localNode) => {
-      console.log("remote changes");
-      console.log("remote", remoteNode);
-      console.log("local", localNode);
     };
 
     r.subscribe();
