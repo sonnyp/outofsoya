@@ -87,7 +87,6 @@ export function observe(rs: RemoteStorage, path: string): Observable {
 export class Resource {
   rs: RemoteStorage;
   path: string;
-  version?: string;
   interval: number = 2000;
   onChange: Function = () => {};
   onConflict: Function = () => {};
@@ -100,51 +99,20 @@ export class Resource {
     this.path = path;
   }
 
-  async get(): Promise<[Node, Response]> {
-    return this.rs.get(this.path, this.version);
-  }
-
-  async put(value: string, type: string): Promise<[Node, Response]> {
-    const headers = {};
-    if (this.version) {
-      headers["If-Match"] = this.version;
-    }
-
-    let node;
-    let res;
-
+  async put(
+    value: string,
+    type: string,
+    version?: string,
+  ): Promise<[Node | null, Response]> {
     const blob = new Blob([value], {
       type,
     });
 
-    try {
-      [node, res] = await this.rs.put(this.path, blob, {
-        headers,
-      });
-    } catch (err) {
-      if (this.subscribed) {
-        this.schedulePoll();
-      }
-      return;
-    }
-
-    if (res.status === 200 || res.status === 201) {
-      this.version = node.version;
+    const [node, res] = await this.rs.put(this.path, blob, version);
+    if (node) {
       await storage.setNode(this.path, node);
-    } else if (res.status === 412) {
-      const resolved = await this.onConflict2([{ type }, value], async () => {
-        this.version = undefined;
-        const [node, res] = await this.get();
-        this.version = node.version;
-        return [node, res];
-      });
-
-      await this.update(resolved, node.type);
-
-      // FIXME no need to wait for onchange to trigger update
-      await this.onChange(resolved, { type: node.type });
-
-      return;
+    } else {
+      // FIXME conflict!
     }
 
     return [node, res];
@@ -155,11 +123,28 @@ export class Resource {
 
     await storage.set(this.path, { type }, value);
 
-    await this.put(value, type);
+    try {
+      await this.put(value, type);
+    } catch (err) {
+      console.error(err);
+    }
 
     if (this.subscribed) {
       this.schedulePoll();
     }
+  }
+
+  private async isNotSynced(localNode: Node) {
+    const localValue = await storage.getFile(this.path);
+
+    // todo version
+    const [node, res] = await this.put(localValue, localNode.type);
+
+    if (!node) {
+      console.log("oops!!");
+    }
+
+    // await this._onConflict();
   }
 
   private async schedulePoll() {
@@ -170,84 +155,60 @@ export class Resource {
     }, this.interval);
   }
 
-  private async isSynced() {
-    try {
-      const [node, res] = await this.get();
+  private async isSynced(localNode?: Node) {
+    const [node, res] = await this.rs.get(
+      this.path,
+      (localNode && localNode.version) || null,
+    );
 
-      if (res.status === 200) {
-        // first get
-        if (!this.version) {
-          const value = await res.text();
-          await storage.set(this.path, node, value);
-          this.version = node.version;
-          await this.onChange(value, node);
-        } else {
-          const localNode = await storage.getNode(this.path);
-          // no conflict
-          if (!localNode || localNode.version) {
-            const value = await res.text();
-
-            await storage.set(this.path, node, value);
-
-            this.version = node.version;
-            await this.onChange(value, node);
-            // conflict
-          } else {
-            const resolved = await this.onConflict(
-              [
-                localNode,
-                () => {
-                  return storage.getFile(this.path);
-                },
-              ],
-              [node, res],
-            );
-
-            this.version = node.version;
-            await this.update(resolved, node.type);
-
-            // FIXME no need to wait for onchange to trigger update
-            await this.onChange(resolved, { type: node.type });
-
-            return;
-            // console.log(resolved);
-            // if (resolved !== undefined) {
-            //   this.version = node.version;
-            //   return this.update(resolved, node.type);
-            // }
-          }
-        }
-      }
-    } catch (err) {
-      console.error(err);
+    // not modified
+    if (!node) {
+      return;
     }
+
+    const value = await res.text();
+    await storage.set(this.path, node, value);
+    await this.onChange(value, node);
   }
 
-  private async isNotSynced() {
-    const [localNode, localValue] = await storage.get(this.path);
+  // private async _onConflict() {
+  //   const resolved = await this.onConflict2([{ type }, value], async () => {
+  //     const [node, res] = await this.rs.get(this.path);
+  //     return [node, res];
+  //   });
 
-    let node;
-    let res;
-    try {
-      [node, res] = await this.put(localValue, localNode.type);
-    } catch (err) {
-      console.error(err);
-    }
-  }
+  //   // equivalent to this.update without scheduler
+  //   await storage.set(this.path, { type }, resolved);
+  //   await this.put(resolved, type);
 
-  private async poll() {
+  //   // FIXME no need to wait for onchange to trigger update
+  //   await this.onChange(resolved, { type: node.type });
+
+  //   await storage.setNode(this.path, node);
+
+  //   return [node, res];
+  // }
+
+  private async poll(node?: Node) {
     if (this.subscribed === false) {
       return;
     }
 
-    const node = await storage.getNode(this.path);
+    node = node || (await storage.getNode(this.path));
 
-    if (!node) {
-      await this.isSynced();
-    } else if (node.version) {
-      await this.isSynced();
-    } else {
-      await this.isNotSynced();
+    try {
+      // first sync ←
+      if (!node) {
+        await this.isSynced();
+        // sync ←
+      } else if (node.version) {
+        await this.isSynced(node);
+        // sync →
+      } else {
+        await this.isNotSynced(node);
+      }
+    } catch (err) {
+      console.error(err);
     }
 
     this.schedulePoll();
@@ -259,11 +220,10 @@ export class Resource {
     const [localNode, localFile] = await storage.get(this.path);
 
     if (localNode && localFile) {
-      this.version = localNode.version;
       this.onChange(localFile, localNode);
     }
 
-    this.poll();
+    this.poll(localNode);
   }
 
   unsubscribe() {

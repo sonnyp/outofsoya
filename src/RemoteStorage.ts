@@ -129,12 +129,12 @@ export default class RS implements AsyncIterable<[string, Node]> {
 
   public async get(
     path: string,
-    version: string,
+    ifNoneMatch?: string,
     options: RequestInit = {},
   ): Promise<[Node | null, Response]> {
     const headers = {};
-    if (version) {
-      headers["If-None-Match"] = version;
+    if (ifNoneMatch) {
+      headers["If-None-Match"] = ifNoneMatch;
     }
 
     const res = await this._get(path, {
@@ -175,22 +175,38 @@ export default class RS implements AsyncIterable<[string, Node]> {
   public async put(
     path: string,
     data: Blob,
+    ifMatch?: string,
     options: RequestInit = {},
   ): Promise<[Node, Response]> {
+    const headers = {};
+    if (ifMatch) {
+      headers["If-Match"] = ifMatch;
+    }
+
     const res = await this.fetch(path, {
       method: "PUT",
       body: data,
+      headers,
       ...options,
     });
+    const { status } = res;
 
-    return [
-      {
-        ...createNode(res.headers),
-        size: data.size,
-        type: data.type || null,
-      },
-      res,
-    ];
+    if (status === 412) {
+      return [null, res];
+    }
+
+    if ([200, 201].includes(status)) {
+      return [
+        {
+          ...createNode(res.headers),
+          size: data.size,
+          type: data.type || null,
+        },
+        res,
+      ];
+    }
+
+    throw new HTTPError(res);
   }
 }
 
