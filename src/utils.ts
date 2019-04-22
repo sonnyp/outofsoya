@@ -44,12 +44,7 @@ async function* createAsyncIterableFetch(
 ): AsyncIterable<[any, Node]> {
   let v = version;
 
-  const [node, res] = await rs.get(path, {
-    cache: "no-store",
-    headers: {
-      "If-None-Match": v,
-    },
-  });
+  const [node, res] = await rs.get(path, version);
 
   if (res.status === 200) {
     v = node.version;
@@ -94,7 +89,6 @@ export class Resource {
   path: string;
   version?: string;
   interval: number = 2000;
-  outOfSync: boolean = false;
   onChange: Function = () => {};
   onConflict: Function = () => {};
   onConflict2: Function = () => {};
@@ -107,16 +101,7 @@ export class Resource {
   }
 
   async get(): Promise<[Node, Response]> {
-    const headers = {};
-    if (this.version) {
-      headers["If-None-Match"] = this.version;
-    }
-
-    const [node, res] = await this.rs.get(this.path, {
-      cache: "no-store",
-      headers,
-    });
-    return [node, res];
+    return this.rs.get(this.path, this.version);
   }
 
   async put(value: string, type: string): Promise<[Node, Response]> {
@@ -137,7 +122,6 @@ export class Resource {
         headers,
       });
     } catch (err) {
-      this.outOfSync = true;
       if (this.subscribed) {
         this.schedulePoll();
       }
@@ -157,8 +141,6 @@ export class Resource {
 
       await this.update(resolved, node.type);
 
-      this.outOfSync = false;
-
       // FIXME no need to wait for onchange to trigger update
       await this.onChange(resolved, { type: node.type });
 
@@ -175,31 +157,6 @@ export class Resource {
 
     await this.put(value, type);
 
-    // try {
-    //   const [node, res] = await this.rs.put(this.path, blob, {
-    //     headers,
-    //   });
-
-    //   if (res.status === 412) {
-    //     const resolved = await this.onConflict(value, node);
-    //     if (resolved !== undefined) {
-    //       this.version = undefined;
-    //       return this.update(resolved, type);
-    //     }
-
-    //     if (this.subscribed) {
-    //       this.poll();
-    //     }
-    //     return;
-    //   }
-
-    //   await metaStorage.set(this.path, JSON.stringify(node));
-
-    //   this.version = node.version;
-    // } catch (err) {
-    //   console.error(err);
-    // }
-
     if (this.subscribed) {
       this.schedulePoll();
     }
@@ -213,36 +170,7 @@ export class Resource {
     }, this.interval);
   }
 
-  private async poll() {
-    if (this.subscribed === false) {
-      return;
-    }
-
-    if (this.outOfSync) {
-      const [localNode, localValue] = await storage.get(this.path);
-
-      let node;
-      let res;
-      try {
-        [node, res] = await this.put(localValue, localNode.type);
-      } catch (err) {
-        if (this.subscribed) {
-          this.schedulePoll();
-        }
-        return;
-      }
-      if (res.status === 200 || res.status === 201) {
-        this.outOfSync = false;
-      }
-
-      console.log("foo");
-      if (this.subscribed) {
-        console.log("bar");
-        this.schedulePoll();
-      }
-      return;
-    }
-
+  private async isSynced() {
     try {
       const [node, res] = await this.get();
 
@@ -289,28 +217,37 @@ export class Resource {
             // }
           }
         }
-        // } else {
-        //   const localNode = JSON.parse(await metaStorage.get(this.path));
-        //   const localValue = await dataStorage.get(this.path);
-        //   if (!localNode || !localValue) return;
-
-        //   const local = [localValue, localNode];
-        //   const remote = [value, node];
-
-        //   const resolved = await this.onConflict2(local, remote);
-        //   if (resolved !== undefined) {
-        //     this.version = node.version;
-        //     return this.update(resolved, node.type);
-        //   }
-
-        //   // if (this.subscribed) {
-        //   //   this.poll();
-        //   // }
-        //   // return;
-        // }
       }
     } catch (err) {
       console.error(err);
+    }
+  }
+
+  private async isNotSynced() {
+    const [localNode, localValue] = await storage.get(this.path);
+
+    let node;
+    let res;
+    try {
+      [node, res] = await this.put(localValue, localNode.type);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  private async poll() {
+    if (this.subscribed === false) {
+      return;
+    }
+
+    const node = await storage.getNode(this.path);
+
+    if (!node) {
+      await this.isSynced();
+    } else if (node.version) {
+      await this.isSynced();
+    } else {
+      await this.isNotSynced();
     }
 
     this.schedulePoll();

@@ -129,10 +129,29 @@ export default class RS implements AsyncIterable<[string, Node]> {
 
   public async get(
     path: string,
+    version: string,
     options: RequestInit = {},
-  ): Promise<[Node, Response]> {
-    const res = await this._get(path, options);
-    return [createNode(res.headers), res];
+  ): Promise<[Node | null, Response]> {
+    const headers = {};
+    if (version) {
+      headers["If-None-Match"] = version;
+    }
+
+    const res = await this._get(path, {
+      cache: "no-store",
+      headers,
+    });
+    const { status } = res;
+
+    if (status === 200) {
+      return [createNode(res.headers), res];
+    }
+
+    if (status === 304) {
+      return [null, res];
+    }
+
+    throw new HTTPError(res);
   }
 
   public async head(path: string, options: RequestInit = {}): Promise<Node> {
