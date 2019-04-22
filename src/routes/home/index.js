@@ -3,7 +3,7 @@ import style from "./style";
 import classNames from "classnames";
 
 import { main } from "../../glue";
-import { feedback, Resource, sound } from "../../utils";
+import { feedback, Resource } from "../../utils";
 
 const Item = ({ item, onRemove, onChange, ...props }, state) => {
   const { value, done } = item;
@@ -155,6 +155,12 @@ class List extends Component {
       this.setState({
         items: JSON.parse(value).sort(sortByDate),
       });
+    };
+
+    r.onRemoteChanges = ([remoteNode, res], localNode) => {
+      console.log("remote changes");
+      console.log("remote", remoteNode);
+      console.log("local", localNode);
     };
 
     r.subscribe();

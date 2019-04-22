@@ -91,6 +91,7 @@ export class Resource {
   onChange: Function = () => {};
   onConflict: Function = () => {};
   onConflict2: Function = () => {};
+  onRemoteChanges: Function = () => {};
   subscribed: boolean = false;
   private pollTimeout: any;
 
@@ -99,7 +100,7 @@ export class Resource {
     this.path = path;
   }
 
-  async put(
+  private async put(
     value: string,
     type: string,
     version?: string,
@@ -118,7 +119,7 @@ export class Resource {
     return [node, res];
   }
 
-  async update(value: string, type: string) {
+  public async update(value: string, type: string) {
     clearTimeout(this.pollTimeout);
 
     await storage.set(this.path, { type }, value);
@@ -134,7 +135,7 @@ export class Resource {
     }
   }
 
-  private async isNotSynced(localNode: Node) {
+  private async hasLocalChanges(localNode: Node) {
     const localValue = await storage.getFile(this.path);
 
     // todo version
@@ -155,20 +156,68 @@ export class Resource {
     }, this.interval);
   }
 
-  private async isSynced(localNode?: Node) {
-    const [node, res] = await this.rs.get(
+  private async hasRemoteChanges(
+    [remoteNode, res]: [Node, Response],
+    localNode: Node,
+  ) {
+    // Local file is unchanged
+    // if (localNode.version) {
+    const value = await res.text();
+    await storage.set(this.path, remoteNode, value);
+    await this.onChange(value, remoteNode);
+    //   return;
+    // }
+
+    // const [newNode, newValue] = await this.onRemoteChanges(
+    //   [remoteNode, res],
+    //   localNode,
+    // );
+
+    // await storage.set(this.path, newNode, newValue);
+    // await this.onChange(newValue, newNode);
+    // await this.put(newValue, newNode.type);
+
+    // console.log("remote changes");
+    // console.log("remote", remoteNode);
+    // console.log("local", localNode);
+
+    //     const resolved = await this.onConflict2([{ type }, value], async () => {
+    //   const [node, res] = await this.rs.get(this.path);
+    //   return [node, res];
+    // });
+
+    // // FIXME no need to wait for onchange to trigger update
+    // await this.onChange(resolved, { type: node.type });
+
+    // await storage.setNode(this.path, node);
+
+    // return [node, res];
+
+    // const value = await res.text();
+    // await storage.set(this.path, remoteNode, value);
+    // await this.onChange(value, remoteNode);
+  }
+
+  private async hasNoLocalChanges(localNode?: Node) {
+    const [remoteNode, res] = await this.rs.get(
       this.path,
       (localNode && localNode.version) || null,
     );
 
-    // not modified
-    if (!node) {
+    // File was not modified
+    if (!remoteNode) {
       return;
     }
 
-    const value = await res.text();
-    await storage.set(this.path, node, value);
-    await this.onChange(value, node);
+    // There is no local file
+    if (!localNode) {
+      const value = await res.text();
+      await storage.set(this.path, remoteNode, value);
+      await this.onChange(value, remoteNode);
+      return;
+    }
+
+    return this.hasRemoteChanges([remoteNode, res], localNode);
   }
 
   // private async _onConflict() {
@@ -197,15 +246,12 @@ export class Resource {
     node = node || (await storage.getNode(this.path));
 
     try {
-      // first sync ←
-      if (!node) {
-        await this.isSynced();
-        // sync ←
-      } else if (node.version) {
-        await this.isSynced(node);
+      // first or subsequent sync ←
+      if (!node || node.version) {
+        await this.hasNoLocalChanges(node);
         // sync →
       } else {
-        await this.isNotSynced(node);
+        await this.hasLocalChanges(node);
       }
     } catch (err) {
       console.error(err);
@@ -214,7 +260,7 @@ export class Resource {
     this.schedulePoll();
   }
 
-  async subscribe() {
+  public async subscribe() {
     this.subscribed = true;
 
     const [localNode, localFile] = await storage.get(this.path);
@@ -226,7 +272,7 @@ export class Resource {
     this.poll(localNode);
   }
 
-  unsubscribe() {
+  public unsubscribe() {
     clearTimeout(this.pollTimeout);
     this.subscribed = false;
   }
