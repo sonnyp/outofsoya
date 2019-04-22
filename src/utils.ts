@@ -22,14 +22,14 @@ export function vibrate(pattern: number | number[] = 30): boolean {
   return navigator.vibrate(pattern);
 }
 
-export function sound(): Promise<void> {
-  const audio = new Audio("/assets/button.wav");
+export function sound(path: string): Promise<void> {
+  const audio = new Audio(path);
   return audio.play();
 }
 
-export function feedback(): void {
+export function feedback(path: string = "/assets/button.wav"): void {
   vibrate();
-  // sound();
+  sound(path);
 }
 
 export function delay(ms: number) {
@@ -338,5 +338,5 @@ export class Resource {
 export async function forget() {
   await storage.clear();
   localStorage.clear();
-  window.location.reload();
+  window.location.reload(true);
 }

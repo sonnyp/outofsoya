@@ -3,18 +3,15 @@ import style from "./style";
 import classNames from "classnames";
 
 import { main } from "../../glue";
-import { feedback, Resource } from "../../utils";
+import { feedback, Resource, sound } from "../../utils";
 
 const Item = ({ item, onRemove, onChange, ...props }, state) => {
   const { value, done } = item;
 
   return (
     <li class={style.item} {...props}>
-      <div
-        class={classNames({ [style.done]: done })}
-        onClick={() => onChange(!done)}
-      >
-        {value}
+      <div onClick={() => onChange(!done)}>
+        <span class={classNames({ strikethrough: done })}>{value}</span>
       </div>
       {done && (
         <button class={style.remove} onClick={onRemove}>
@@ -116,7 +113,7 @@ class List extends Component {
   };
 
   handleItemPress(item) {
-    feedback();
+    feedback("/assets/pencil.wav");
 
     item.done = !item.done;
 
