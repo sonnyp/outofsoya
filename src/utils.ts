@@ -1,6 +1,7 @@
 import RemoteStorage, { Node } from "./RemoteStorage";
 import { Observable } from "zen-observable/lib/Observable";
-import storage from "./storage";
+import storage, { StorageNode } from "./storage";
+import { timingSafeEqual } from "crypto";
 
 function toObservable(asyncIterable: AsyncIterable<any>): Observable {
   return new Observable(observer => {
@@ -122,7 +123,8 @@ export class Resource {
   public async update(value: string, type: string) {
     clearTimeout(this.pollTimeout);
 
-    await storage.set(this.path, { type }, value);
+    const localNode = await storage.getNode(this.path);
+    await storage.set(this.path, { ...localNode, type, sync: false }, value);
 
     try {
       await this.put(value, type);
@@ -135,19 +137,6 @@ export class Resource {
     }
   }
 
-  private async hasLocalChanges(localNode: Node) {
-    const localValue = await storage.getFile(this.path);
-
-    // todo version
-    const [node, res] = await this.put(localValue, localNode.type);
-
-    if (!node) {
-      console.log("oops!!");
-    }
-
-    // await this._onConflict();
-  }
-
   private async schedulePoll() {
     clearTimeout(this.pollTimeout);
 
@@ -158,100 +147,62 @@ export class Resource {
 
   private async hasRemoteChanges(
     [remoteNode, res]: [Node, Response],
-    localNode: Node,
+    localNode: StorageNode,
   ) {
-    // Local file is unchanged
-    // if (localNode.version) {
-    const value = await res.text();
-    await storage.set(this.path, remoteNode, value);
-    await this.onChange(value, remoteNode);
-    //   return;
-    // }
+    const getLocalValue = () => {
+      return storage.getFile(this.path);
+    };
 
-    // const [newNode, newValue] = await this.onRemoteChanges(
-    //   [remoteNode, res],
-    //   localNode,
-    // );
-
-    // await storage.set(this.path, newNode, newValue);
-    // await this.onChange(newValue, newNode);
-    // await this.put(newValue, newNode.type);
-
-    // console.log("remote changes");
-    // console.log("remote", remoteNode);
-    // console.log("local", localNode);
-
-    //     const resolved = await this.onConflict2([{ type }, value], async () => {
-    //   const [node, res] = await this.rs.get(this.path);
-    //   return [node, res];
-    // });
-
-    // // FIXME no need to wait for onchange to trigger update
-    // await this.onChange(resolved, { type: node.type });
-
-    // await storage.setNode(this.path, node);
-
-    // return [node, res];
-
-    // const value = await res.text();
-    // await storage.set(this.path, remoteNode, value);
-    // await this.onChange(value, remoteNode);
-  }
-
-  private async hasNoLocalChanges(localNode?: Node) {
-    const [remoteNode, res] = await this.rs.get(
-      this.path,
-      (localNode && localNode.version) || null,
+    const [resolvedNode, resolvedValue] = await this.onConflict(
+      [localNode, getLocalValue],
+      [remoteNode, res],
     );
 
-    // File was not modified
-    if (!remoteNode) {
-      return;
-    }
+    await storage.set(
+      this.path,
+      { ...resolvedNode, sync: false },
+      resolvedValue,
+    );
 
-    // There is no local file
-    if (!localNode) {
-      const value = await res.text();
-      await storage.set(this.path, remoteNode, value);
-      await this.onChange(value, remoteNode);
-      return;
-    }
+    await this.onChange(resolvedValue, resolvedNode);
 
-    return this.hasRemoteChanges([remoteNode, res], localNode);
+    try {
+      await this.put(resolvedValue, resolvedNode.type);
+    } catch (err) {
+      console.error(err);
+    }
   }
 
-  // private async _onConflict() {
-  //   const resolved = await this.onConflict2([{ type }, value], async () => {
-  //     const [node, res] = await this.rs.get(this.path);
-  //     return [node, res];
-  //   });
+  private async hasNoRemoteChanges(localNode: StorageNode) {
+    const localValue = await storage.getFile(this.path);
+    await this.put(localValue, localNode.type);
+  }
 
-  //   // equivalent to this.update without scheduler
-  //   await storage.set(this.path, { type }, resolved);
-  //   await this.put(resolved, type);
-
-  //   // FIXME no need to wait for onchange to trigger update
-  //   await this.onChange(resolved, { type: node.type });
-
-  //   await storage.setNode(this.path, node);
-
-  //   return [node, res];
-  // }
-
-  private async poll(node?: Node) {
+  private async poll(localNode?: StorageNode) {
     if (this.subscribed === false) {
       return;
     }
 
-    node = node || (await storage.getNode(this.path));
+    localNode = localNode || (await storage.getNode(this.path));
 
     try {
-      // first or subsequent sync ←
-      if (!node || node.version) {
-        await this.hasNoLocalChanges(node);
-        // sync →
+      const [remoteNode, res] = await this.rs.get(
+        this.path,
+        (localNode && localNode.version) || null,
+      );
+
+      if (!localNode || localNode.sync !== false) {
+        if (remoteNode) {
+          const value = await res.text();
+          await storage.set(this.path, remoteNode, value);
+          await this.onChange(value, remoteNode);
+        }
       } else {
-        await this.hasLocalChanges(node);
+        if (remoteNode) {
+          await this.hasRemoteChanges([remoteNode, res], localNode);
+        } else {
+          await this.hasNoRemoteChanges(localNode);
+        }
       }
     } catch (err) {
       console.error(err);

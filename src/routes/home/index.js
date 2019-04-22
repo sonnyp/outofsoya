@@ -45,36 +45,39 @@ async function resolveConflict([localNode, getLocal], [remoteNode, response]) {
     [],
   );
 
-  return JSON.stringify(resolved.sort(sortByDate));
+  return [
+    { type: "application/javascript" },
+    JSON.stringify(resolved.sort(sortByDate)),
+  ];
 }
 
-async function resolveConflict2([localNode, localValue], fetch) {
-  console.log("oh wow conflict2!!!");
+// async function resolveConflict2([localNode, localValue], fetch) {
+//   console.log("oh wow conflict2!!!");
 
-  localValue = JSON.parse(localValue);
+//   localValue = JSON.parse(localValue);
 
-  const [remoteNode, res] = await fetch();
+//   const [remoteNode, res] = await fetch();
 
-  const remoteValue = await res.json();
+//   const remoteValue = await res.json();
 
-  console.log("local", localNode, localValue);
-  console.log("remote", remoteNode, remoteValue);
+//   console.log("local", localNode, localValue);
+//   console.log("remote", remoteNode, remoteValue);
 
-  const resolved = [...localValue, ...remoteValue].reduce(
-    (accumulator, item) => {
-      if (!accumulator.find(_ => _.value === item.value)) {
-        accumulator.unshift(item);
-      }
+//   const resolved = [...localValue, ...remoteValue].reduce(
+//     (accumulator, item) => {
+//       if (!accumulator.find(_ => _.value === item.value)) {
+//         accumulator.unshift(item);
+//       }
 
-      return accumulator;
-    },
-    [],
-  );
+//       return accumulator;
+//     },
+//     [],
+//   );
 
-  console.log(resolved);
+//   console.log(resolved);
 
-  return JSON.stringify(resolved.sort(sortByDate));
-}
+//   return JSON.stringify(resolved.sort(sortByDate));
+// }
 
 class List extends Component {
   state = {
@@ -149,7 +152,7 @@ class List extends Component {
 
     r.onConflict = resolveConflict;
 
-    r.onConflict2 = resolveConflict2;
+    // r.onConflict2 = resolveConflict2;
 
     r.onChange = (value, node) => {
       this.setState({
