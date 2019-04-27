@@ -27,12 +27,8 @@ function sortByDate(a, b) {
 }
 
 async function resolveConflict([localNode, getLocal], [remoteNode, response]) {
-  console.log("oh wow conflict!!!");
   const localValue = JSON.parse(await getLocal());
   const remoteValue = await response.json();
-
-  console.log("local", localNode, localValue);
-  console.log("remote", remoteNode, remoteValue);
 
   const resolved = [...localValue, ...remoteValue].reduce(
     (accumulator, item) => {
@@ -88,7 +84,7 @@ class List extends Component {
   };
 
   handleItemPress(item) {
-    feedback("/assets/pencil.wav");
+    feedback();
 
     item.done = !item.done;
 

@@ -1,18 +1,8 @@
 import RemoteStorage, { Node } from "./RemoteStorage";
 import storage, { StorageNode } from "./storage";
 
-export function vibrate(pattern: number | number[] = 30): boolean {
+export function feedback(pattern: number | number[] = 30): boolean {
   return navigator.vibrate(pattern);
-}
-
-export function sound(path: string): Promise<void> {
-  const audio = new Audio(path);
-  return audio.play();
-}
-
-export function feedback(path: string = "/assets/button.wav"): void {
-  vibrate();
-  sound(path);
 }
 
 export function delay(ms: number) {
